@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Проверка иллюстраций{% endblock %}
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">Модуль заимствований</p>
+  <h1>Проверка иллюстраций</h1>
+  <p class="lead">
+    Загрузите фото, PDF или DOCX — сравним с корпусом по perceptual hash
+    {% if ocr_available %}и OCR{% else %}(OCR недоступен){% endif %}.
+  </p>
+</section>
+
+<form class="panel" action="/check" method="post" enctype="multipart/form-data" id="check-form">
+  <div class="drop" id="dropzone">
+    <input type="file" name="files" id="files" multiple accept=".pdf,.docx,.png,.jpg,.jpeg,.gif,.bmp,.tif,.tiff,.webp,image/*" required>
+    <label for="files" class="drop-label">
+      <strong>Выберите файлы</strong>
+      <span>или перетащите сюда · PNG, JPG, PDF, DOCX</span>
+    </label>
+    <ul class="file-list" id="file-list"></ul>
+  </div>
+
+  <div class="modes">
+    <label class="mode">
+      <input type="radio" name="mode" value="check" checked>
+      <span>
+        <strong>Проверить</strong>
+        Найти совпадения с корпусом
+      </span>
+    </label>
+    <label class="mode">
+      <input type="radio" name="mode" value="index">
+      <span>
+        <strong>В корпус</strong>
+        Добавить как эталон без проверки
+      </span>
+    </label>
+  </div>
+
+  <div class="grid">
+    <label>
+      Task ID
+      <input type="text" name="task_id" placeholder="авто, если пусто">
+    </label>
+    <label>
+      Document ID
+      <input type="text" name="document_id" placeholder="авто, если пусто">
+    </label>
+    <label>
+      Порог τ (Хэмминг)
+      <input type="number" name="tau" value="10" min="0" max="32">
+    </label>
+    <label class="check">
+      <input type="checkbox" name="index_to_corpus" value="true">
+      После проверки добавить в корпус
+    </label>
+  </div>
+
+  <button type="submit" class="btn">Запустить</button>
+</form>
+
+<script>
+  const input = document.getElementById('files');
+  const list = document.getElementById('file-list');
+  const drop = document.getElementById('dropzone');
+
+  function render() {
+    list.innerHTML = '';
+    [...input.files].forEach(f => {
+      const li = document.createElement('li');
+      li.textContent = `${f.name} (${Math.round(f.size / 1024)} КБ)`;
+      list.appendChild(li);
+    });
+  }
+  input.addEventListener('change', render);
+
+  ['dragenter', 'dragover'].forEach(ev => {
+    drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(ev => {
+    drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); });
+  });
+  drop.addEventListener('drop', e => {
+    input.files = e.dataTransfer.files;
+    render();
+  });
+</script>
+{% endblock %}

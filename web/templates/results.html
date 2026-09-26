@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Результаты — {{ job.document_id }}{% endblock %}
+{% block content %}
+<section class="hero compact">
+  <p class="eyebrow">Результат проверки · {{ job_id }}</p>
+  <h1>P<sub>img</sub> = {{ job.p_img_percent }}%</h1>
+  <p class="lead">
+    Извлечено {{ job.n_total }}, совпадений {{ job.n_match }}.
+    Порог τ={{ job.tau }}, OCR: {{ "вкл." if job.ocr_enabled else "выкл." }}
+  </p>
+</section>
+
+<div class="stats">
+  <div>
+    <span>Документ</span>
+    <strong>{{ job.document_path }}</strong>
+  </div>
+  <div>
+    <span>Task / Doc</span>
+    <strong>{{ job.task_id }} / {{ job.document_id }}</strong>
+  </div>
+  <div>
+    <span>Заимствовано</span>
+    <strong class="{% if job.n_match %}bad{% else %}ok{% endif %}">{{ job.n_match }} из {{ job.n_total }}</strong>
+  </div>
+</div>
+
+{% if job.images %}
+<section class="cards">
+  {% for img in job.images %}
+  <article class="card {% if img.matched %}hit{% else %}clean{% endif %}">
+    <div class="thumbs">
+      <figure>
+        {% if img.thumb_url %}<img src="{{ img.thumb_url }}" alt="Изображение {{ img.seq }}">{% endif %}
+        <figcaption>#{{ img.seq }} · {{ img.width }}×{{ img.height }}</figcaption>
+      </figure>
+      {% if img.source_thumb_url %}
+      <figure class="source">
+        <img src="{{ img.source_thumb_url }}" alt="Источник">
+        <figcaption>источник</figcaption>
+      </figure>
+      {% endif %}
+    </div>
+    <div class="body">
+      {% if img.matched %}
+      <p class="status bad">Заимствование{% if img.low_confidence %} · низкая уверенность{% endif %}</p>
+      <p>{{ via_label(img.match_via) }}</p>
+      <p>Источник: <code>{{ img.source_document_id }}</code> (task {{ img.source_task_id }})</p>
+      {% if img.hamming_distance is not none and img.hamming_distance <= 63 %}
+      <p>d<sub>H</sub> = {{ img.hamming_distance }}</p>
+      {% endif %}
+      {% if img.text_similarity %}
+      <p>Сходство текста: {{ '%.2f'|format(img.text_similarity) }}</p>
+      {% endif %}
+      {% else %}
+      <p class="status ok">Оригинал</p>
+      <p>Похожих в корпусе не найдено</p>
+      {% endif %}
+      {% if img.ocr_text %}
+      <p class="ocr">{{ img.ocr_text[:220] }}{% if img.ocr_text|length > 220 %}…{% endif %}</p>
+      {% endif %}
+    </div>
+  </article>
+  {% endfor %}
+</section>
+{% else %}
+<p class="empty">Изображений не извлечено. Проверьте, что файлы содержат растровую графику достаточного размера.</p>
+{% endif %}
+
+<p class="actions">
+  <a class="btn ghost" href="/">Новая проверка</a>
+</p>
+{% endblock %}

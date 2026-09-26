@@ -1,0 +1,9 @@
+data/uploads/
+data/jobs/
+data/thumbs/
+data/demo/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env

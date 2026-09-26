@@ -1,0 +1,3 @@
+# Дублирует зависимости для локального pip / документации.
+# На Render сборка идёт через Dockerfile.
+-r image_pipeline/requirements.txt

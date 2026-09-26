@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Добавлено в корпус{% endblock %}
+{% block content %}
+<section class="hero compact">
+  <p class="eyebrow">Индексация · {{ job_id }}</p>
+  <h1>В корпус добавлено {{ job.indexed }}</h1>
+  <p class="lead">
+    Task {{ job.task_id }}, document {{ job.document_id }}.
+    Всего записей в корпусе: {{ job.corpus_size }}.
+  </p>
+</section>
+
+<ul class="file-list panel-list">
+  {% for name in job.files %}
+  <li>{{ name }}</li>
+  {% endfor %}
+</ul>
+
+<p class="actions">
+  <a class="btn ghost" href="/">К проверке</a>
+</p>
+{% endblock %}

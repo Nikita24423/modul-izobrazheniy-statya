@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: modul-izobrazheniy
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
