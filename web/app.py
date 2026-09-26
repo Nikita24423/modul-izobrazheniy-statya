@@ -28,9 +28,9 @@ DB_PATH = Path(DEFAULT_DB)
 
 ALLOWED_EXT = {".pdf", ".docx", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp"}
 VIA_LABELS = {
-    "phash": "визуально (pHash)",
-    "ocr": "по тексту (OCR)",
-    "both": "визуально + OCR",
+    "phash": "Совпадение по виду картинки",
+    "ocr": "Совпадение по тексту на картинке",
+    "both": "Совпадение и по виду, и по тексту",
 }
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -143,11 +143,13 @@ def _merge_results(parts: list[ImageCheckResult], *, task_id: str, document_id: 
 @app.get("/", response_class=HTMLResponse)
 async def upload_page(request: Request):
     svc = _svc()
+    size = svc.corpus_size()
     return templates.TemplateResponse(
         request,
         "index.html",
         {
-            "corpus_size": svc.corpus_size(),
+            "corpus_size": size,
+            "library_size": size,
             "ocr_available": ocr_available(),
         },
     )

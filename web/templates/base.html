@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Иллюстрации{% endblock %}</title>
+  <title>{% block title %}Проверка картинок{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,500;7..72,700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -12,10 +12,11 @@
 <body>
   <div class="bg" aria-hidden="true"></div>
   <header class="top">
-    <a class="brand" href="/">Иллюстрации</a>
+    <a class="brand" href="/">Проверка картинок</a>
     <nav>
-      <a href="/">Проверка</a>
-      <span class="meta">корпус: {{ corpus_size if corpus_size is defined else job.corpus_size }}</span>
+      <span class="meta" title="Сколько эталонных изображений уже сохранено для сравнения">
+        В базе эталонов: <b>{{ library_size if library_size is defined else job.corpus_size }}</b>
+      </span>
     </nav>
   </header>
   <main class="wrap">

@@ -1,68 +1,112 @@
 {% extends "base.html" %}
-{% block title %}Проверка иллюстраций{% endblock %}
+{% block title %}Проверка картинок{% endblock %}
 {% block content %}
 <section class="hero">
-  <p class="eyebrow">Модуль заимствований</p>
-  <h1>Проверка иллюстраций</h1>
+  <h1>Есть ли чужие картинки?</h1>
   <p class="lead">
-    Загрузите фото, PDF или DOCX — сравним с корпусом по perceptual hash
-    {% if ocr_available %}и OCR{% else %}(OCR недоступен){% endif %}.
+    Загрузите фото или документ — система сравнит картинки с вашей
+    <strong>базой эталонов</strong> (это сохранённые «известные» изображения для сравнения).
   </p>
 </section>
 
+<ol class="howto">
+  <li>
+    <strong>Сначала сохраните эталоны</strong>
+    <span>методички, чужие работы, картинки из интернета — то, с чем сравнивать</span>
+  </li>
+  <li>
+    <strong>Потом проверьте работу</strong>
+    <span>студентский файл или свои фото — найдём похожие на эталоны</span>
+  </li>
+</ol>
+
+{% if library_size == 0 %}
+<div class="notice">
+  База эталонов пока пустая. Сначала выберите режим
+  «Сохранить как эталон», иначе при проверке не с чем сравнивать.
+</div>
+{% endif %}
+
 <form class="panel" action="/check" method="post" enctype="multipart/form-data" id="check-form">
+  <div class="step-label">1. Что сделать</div>
+  <div class="modes">
+    <label class="mode">
+      <input type="radio" name="mode" value="check" {% if library_size > 0 %}checked{% endif %}>
+      <span>
+        <strong>Проверить на совпадения</strong>
+        Сравнить загруженные картинки с базой эталонов
+      </span>
+    </label>
+    <label class="mode">
+      <input type="radio" name="mode" value="index" {% if library_size == 0 %}checked{% endif %}>
+      <span>
+        <strong>Сохранить как эталон</strong>
+        Добавить картинки в базу для будущих проверок
+      </span>
+    </label>
+  </div>
+
+  <div class="step-label">2. Загрузите файлы</div>
   <div class="drop" id="dropzone">
     <input type="file" name="files" id="files" multiple accept=".pdf,.docx,.png,.jpg,.jpeg,.gif,.bmp,.tif,.tiff,.webp,image/*" required>
     <label for="files" class="drop-label">
-      <strong>Выберите файлы</strong>
-      <span>или перетащите сюда · PNG, JPG, PDF, DOCX</span>
+      <strong>Нажмите или перетащите файлы сюда</strong>
+      <span>Фото: PNG, JPG · документы: PDF, DOCX</span>
     </label>
     <ul class="file-list" id="file-list"></ul>
   </div>
 
-  <div class="modes">
-    <label class="mode">
-      <input type="radio" name="mode" value="check" checked>
-      <span>
-        <strong>Проверить</strong>
-        Найти совпадения с корпусом
-      </span>
-    </label>
-    <label class="mode">
-      <input type="radio" name="mode" value="index">
-      <span>
-        <strong>В корпус</strong>
-        Добавить как эталон без проверки
-      </span>
-    </label>
-  </div>
+  <label class="check save-after" id="save-after">
+    <input type="checkbox" name="index_to_corpus" value="true">
+    После проверки тоже сохранить эти картинки как эталоны
+  </label>
 
-  <div class="grid">
-    <label>
-      Task ID
-      <input type="text" name="task_id" placeholder="авто, если пусто">
-    </label>
-    <label>
-      Document ID
-      <input type="text" name="document_id" placeholder="авто, если пусто">
-    </label>
-    <label>
-      Порог τ (Хэмминг)
-      <input type="number" name="tau" value="10" min="0" max="32">
-    </label>
-    <label class="check">
-      <input type="checkbox" name="index_to_corpus" value="true">
-      После проверки добавить в корпус
-    </label>
-  </div>
+  <details class="advanced">
+    <summary>Дополнительные настройки</summary>
+    <div class="grid">
+      <label>
+        Название работы
+        <input type="text" name="document_id" placeholder="например: работа_Иванова">
+      </label>
+      <label>
+        Группа / задание
+        <input type="text" name="task_id" placeholder="например: группа_А">
+      </label>
+      <label>
+        Насколько строго искать похожие
+        <select name="tau">
+          <option value="5">Строго (только почти одинаковые)</option>
+          <option value="10" selected>Обычный режим</option>
+          <option value="15">Мягче (найдёт и похожие)</option>
+        </select>
+      </label>
+    </div>
+  </details>
 
-  <button type="submit" class="btn">Запустить</button>
+  <button type="submit" class="btn" id="submit-btn">Проверить</button>
 </form>
 
 <script>
   const input = document.getElementById('files');
   const list = document.getElementById('file-list');
   const drop = document.getElementById('dropzone');
+  const btn = document.getElementById('submit-btn');
+  const saveAfter = document.getElementById('save-after');
+
+  function mode() {
+    return document.querySelector('input[name="mode"]:checked')?.value || 'check';
+  }
+
+  function syncMode() {
+    const isCheck = mode() === 'check';
+    btn.textContent = isCheck ? 'Проверить' : 'Сохранить в базу эталонов';
+    saveAfter.style.display = isCheck ? 'flex' : 'none';
+  }
+
+  document.querySelectorAll('input[name="mode"]').forEach(el => {
+    el.addEventListener('change', syncMode);
+  });
+  syncMode();
 
   function render() {
     list.innerHTML = '';

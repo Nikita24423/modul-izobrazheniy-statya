@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Добавлено в корпус{% endblock %}
+{% block title %}Эталоны сохранены{% endblock %}
 {% block content %}
 <section class="hero compact">
-  <p class="eyebrow">Индексация · {{ job_id }}</p>
-  <h1>В корпус добавлено {{ job.indexed }}</h1>
+  <p class="eyebrow">База эталонов</p>
+  <h1 class="ok">Сохранено: {{ job.indexed }}</h1>
   <p class="lead">
-    Task {{ job.task_id }}, document {{ job.document_id }}.
-    Всего записей в корпусе: {{ job.corpus_size }}.
+    Эти картинки теперь в базе эталонов. При следующей проверке система будет искать похожие на них.
+    Всего в базе: {{ job.corpus_size }}.
   </p>
 </section>
 
@@ -17,6 +17,6 @@
 </ul>
 
 <p class="actions">
-  <a class="btn ghost" href="/">К проверке</a>
+  <a class="btn" href="/">Проверить работу</a>
 </p>
 {% endblock %}
