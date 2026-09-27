@@ -47,11 +47,15 @@
   </div>
 
   <div class="step-label">2. Загрузите файлы</div>
+  <div class="formats-help">
+    <div><strong>Фото:</strong> PNG, JPG/JPEG/JFIF, WEBP, GIF, BMP, TIFF, HEIC, AVIF</div>
+    <div><strong>Документы:</strong> PDF, Word (DOCX), PowerPoint (PPTX), Excel (XLSX), OpenDocument (ODT/ODP)</div>
+  </div>
   <div class="drop" id="dropzone">
-    <input type="file" name="files" id="files" multiple accept=".pdf,.docx,.png,.jpg,.jpeg,.gif,.bmp,.tif,.tiff,.webp,image/*" required>
+    <input type="file" name="files" id="files" multiple accept="{{ accept_attr }}" required>
     <label for="files" class="drop-label">
       <strong>Нажмите или перетащите файлы сюда</strong>
-      <span>Фото: PNG, JPG · документы: PDF, DOCX</span>
+      <span>Можно несколько файлов разных форматов сразу</span>
     </label>
     <ul class="file-list" id="file-list"></ul>
   </div>

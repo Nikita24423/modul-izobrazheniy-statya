@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from image_pipeline import ImageBorrowingService, ImageCheckResult, ocr_available
+from image_pipeline.core import RASTER_EXT, SUPPORTED_DOC_EXT, supported_formats
 from web.storage import PersistentStore, storage_info
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -24,7 +25,7 @@ WEB_DIR = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 UPLOAD_DIR = DATA_DIR / "uploads"
 
-ALLOWED_EXT = {".pdf", ".docx", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp"}
+ALLOWED_EXT = SUPPORTED_DOC_EXT | RASTER_EXT
 VIA_LABELS = {
     "phash": "Совпадение по виду картинки",
     "ocr": "Совпадение по тексту на картинке",
@@ -164,6 +165,8 @@ async def upload_page(request: Request):
             "library_size": size,
             "ocr_available": ocr_available(),
             "storage": info,
+            "formats": supported_formats(),
+            "accept_attr": ",".join(sorted(ALLOWED_EXT)) + ",image/*",
         },
     )
 
@@ -197,7 +200,11 @@ async def check_upload(
             if suffix not in ALLOWED_EXT:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Формат не поддерживается: {suffix}",
+                    detail=(
+                        f"Формат не поддерживается: {suffix}. "
+                        f"Можно: фото ({', '.join(sorted(RASTER_EXT))}), "
+                        f"документы ({', '.join(sorted(SUPPORTED_DOC_EXT))})"
+                    ),
                 )
             dest = job_dir / _safe_name(upload.filename)
             with dest.open("wb") as out:

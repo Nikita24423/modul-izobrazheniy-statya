@@ -11,6 +11,8 @@ image_pipeline — модуль обнаружения заимствовани�
 
 from .core import (
     DEFAULT_DB,
+    RASTER_EXT,
+    SUPPORTED_DOC_EXT,
     CorpusEntry,
     CorpusStore,
     DocumentImageRecord,
@@ -28,6 +30,7 @@ from .core import (
     phash_to_hex,
     process_document,
     render_html,
+    supported_formats,
     text_similarity,
     write_report,
 )
@@ -41,6 +44,8 @@ __all__ = [
     "DocumentImageRecord",
     "CorpusStore",
     "DEFAULT_DB",
+    "RASTER_EXT",
+    "SUPPORTED_DOC_EXT",
     "extract_images",
     "compute_phash",
     "hamming_distance",
@@ -53,6 +58,7 @@ __all__ = [
     "process_document",
     "render_html",
     "write_report",
+    "supported_formats",
 ]
 
 __version__ = "1.3.0"

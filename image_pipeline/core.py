@@ -21,8 +21,46 @@ from PIL import Image, ImageOps
 # --- модели -----------------------------------------------------------------
 
 MIN_AREA = 4096
-RASTER_EXT = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp"}
+RASTER_EXT = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".jpe",
+    ".jfif",
+    ".gif",
+    ".bmp",
+    ".tif",
+    ".tiff",
+    ".webp",
+    ".heic",
+    ".heif",
+    ".avif",
+}
 SKIP_EXT = {".emf", ".wmf"}
+MIME_BY_EXT = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".jpe": "image/jpeg",
+    ".jfif": "image/jpeg",
+    ".gif": "image/gif",
+    ".bmp": "image/bmp",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
+    ".webp": "image/webp",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
+    ".avif": "image/avif",
+}
+# ZIP-контейнеры Office / OpenDocument → папка с медиа
+OFFICE_MEDIA_PREFIX = {
+    ".docx": "word/media/",
+    ".pptx": "ppt/media/",
+    ".xlsx": "xl/media/",
+    ".odt": "Pictures/",
+    ".odp": "Pictures/",
+}
+SUPPORTED_DOC_EXT = {".pdf", *OFFICE_MEDIA_PREFIX.keys()}
 MIN_OCR_CHARS = 12
 DEFAULT_TEXT_TAU = 0.82
 DEFAULT_DB = Path(__file__).resolve().parent.parent / "data" / "corpus.db"
@@ -167,6 +205,33 @@ def _probe_image(data: bytes) -> tuple[int, int] | None:
         with Image.open(io.BytesIO(data)) as im:
             return im.size
     except Exception:
+        # HEIC/HEIF — через pillow-heif, если установлен
+        try:
+            from pillow_heif import register_heif_opener
+
+            register_heif_opener()
+            with Image.open(io.BytesIO(data)) as im:
+                return im.size
+        except Exception:
+            return None
+
+
+def _normalize_image_bytes(data: bytes, suffix: str = "") -> tuple[bytes, str] | None:
+    """Приводит экзотические форматы к JPEG для дальнейшего pHash/OCR."""
+    try:
+        if suffix in {".heic", ".heif"}:
+            try:
+                from pillow_heif import register_heif_opener
+
+                register_heif_opener()
+            except ImportError:
+                return None
+        with Image.open(io.BytesIO(data)) as im:
+            im = im.convert("RGB")
+            buf = io.BytesIO()
+            im.save(buf, "JPEG", quality=92)
+            return buf.getvalue(), "image/jpeg"
+    except Exception:
         return None
 
 
@@ -177,9 +242,18 @@ def _append_blob(
     mime: str,
     page: int | None,
     seq: int,
+    *,
+    suffix: str = "",
 ) -> int:
     if len(data) < 32:
         return seq
+    # HEIC/AVIF и повреждённые файлы — пробуем нормализовать
+    if suffix in {".heic", ".heif", ".avif"} or _probe_image(data) is None:
+        normalized = _normalize_image_bytes(data, suffix=suffix)
+        if normalized:
+            data, mime = normalized
+        elif suffix in {".heic", ".heif", ".avif"}:
+            return seq
     digest = _sha256(data)
     if digest in seen:
         return seq
@@ -223,54 +297,55 @@ def extract_from_pdf(path: Path) -> list[ImageBlob]:
                 data = extracted.get("image")
                 if not data:
                     continue
-                ext = extracted.get("ext", "png")
-                mime = f"image/{ext}" if ext != "jpg" else "image/jpeg"
-                seq = _append_blob(blobs, seen, data, mime, page_idx + 1, seq)
+                ext = "." + str(extracted.get("ext", "png")).lower().lstrip(".")
+                mime = MIME_BY_EXT.get(ext, f"image/{ext.lstrip('.')}")
+                seq = _append_blob(
+                    blobs, seen, data, mime, page_idx + 1, seq, suffix=ext
+                )
     finally:
         doc.close()
     return blobs
 
 
-def extract_from_docx(path: Path) -> list[ImageBlob]:
+def extract_from_office_zip(path: Path, media_prefix: str) -> list[ImageBlob]:
+    """DOCX / PPTX / XLSX / ODT / ODP — картинки внутри ZIP."""
     blobs: list[ImageBlob] = []
     seen: set[str] = set()
     seq = 0
     with zipfile.ZipFile(path, "r") as zf:
         for name in sorted(zf.namelist()):
-            if not name.startswith("word/media/"):
+            if media_prefix == "Pictures/":
+                # ODT/ODP: Pictures/img.png
+                if not name.startswith("Pictures/") or name.endswith("/"):
+                    continue
+            elif not name.startswith(media_prefix):
                 continue
             ext = Path(name).suffix.lower()
-            if ext in SKIP_EXT or ext not in RASTER_EXT:
+            if ext in SKIP_EXT:
                 continue
-            data = zf.read(name)
-            mime = {
-                ".png": "image/png",
-                ".jpg": "image/jpeg",
-                ".jpeg": "image/jpeg",
-                ".gif": "image/gif",
-                ".bmp": "image/bmp",
-                ".tif": "image/tiff",
-                ".tiff": "image/tiff",
-                ".webp": "image/webp",
-            }.get(ext, "application/octet-stream")
-            seq = _append_blob(blobs, seen, data, mime, None, seq)
+            # в Office встречаются и «нестандартные» растры — пробуем открыть
+            if ext and ext not in RASTER_EXT and ext not in {".bin"}:
+                # всё равно попробуем как байты картинки
+                pass
+            try:
+                data = zf.read(name)
+            except Exception:
+                continue
+            mime = MIME_BY_EXT.get(ext, "application/octet-stream")
+            seq = _append_blob(blobs, seen, data, mime, None, seq, suffix=ext)
     return blobs
+
+
+def extract_from_docx(path: Path) -> list[ImageBlob]:
+    return extract_from_office_zip(path, "word/media/")
 
 
 def extract_from_image(path: Path) -> list[ImageBlob]:
     data = path.read_bytes()
-    mime = {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif": "image/gif",
-        ".bmp": "image/bmp",
-        ".tif": "image/tiff",
-        ".tiff": "image/tiff",
-        ".webp": "image/webp",
-    }.get(path.suffix.lower(), "application/octet-stream")
+    suffix = path.suffix.lower()
+    mime = MIME_BY_EXT.get(suffix, "application/octet-stream")
     blobs: list[ImageBlob] = []
-    _append_blob(blobs, set(), data, mime, None, 0)
+    _append_blob(blobs, set(), data, mime, None, 0, suffix=suffix)
     return blobs
 
 
@@ -281,14 +356,19 @@ def extract_images(path: str | Path) -> list[ImageBlob]:
     suffix = p.suffix.lower()
     if suffix == ".pdf":
         return extract_from_pdf(p)
-    if suffix == ".docx":
-        return extract_from_docx(p)
+    if suffix in OFFICE_MEDIA_PREFIX:
+        return extract_from_office_zip(p, OFFICE_MEDIA_PREFIX[suffix])
     if suffix in RASTER_EXT:
         return extract_from_image(p)
-    raise ValueError(
-        f"Формат не поддерживается: {suffix} "
-        f"(ожидается .pdf, .docx или растровое изображение)"
-    )
+    supported = ", ".join(sorted(SUPPORTED_DOC_EXT | RASTER_EXT))
+    raise ValueError(f"Формат не поддерживается: {suffix}. Допустимо: {supported}")
+
+
+def supported_formats() -> dict[str, list[str]]:
+    return {
+        "images": sorted(RASTER_EXT),
+        "documents": sorted(SUPPORTED_DOC_EXT),
+    }
 
 
 # --- OCR --------------------------------------------------------------------
