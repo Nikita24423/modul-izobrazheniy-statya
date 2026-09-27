@@ -52,6 +52,15 @@ body {
 }
 .meta { color: var(--muted); font-size: 0.9rem; }
 .meta b { color: var(--ink); }
+.ok-pill {
+  background: rgba(31, 122, 77, 0.12);
+  color: var(--ok) !important;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.8rem !important;
+  font-weight: 600;
+}
+.top nav { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
 
 .wrap {
   max-width: 920px;

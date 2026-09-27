@@ -602,13 +602,25 @@ class CorpusStore:
 # --- конвейер ---------------------------------------------------------------
 
 
-def _save_thumb(data: bytes, out_dir: Path, seq: int) -> str:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"img_{seq:03d}.jpg"
+def _thumb_jpeg_bytes(data: bytes) -> bytes:
+    buf = io.BytesIO()
     with Image.open(io.BytesIO(data)) as im:
         im = im.convert("RGB")
         im.thumbnail((200, 200))
-        im.save(path, "JPEG", quality=85)
+        im.save(buf, "JPEG", quality=85)
+    return buf.getvalue()
+
+
+def _save_thumb(data: bytes, out_dir: Path, seq: int, store=None) -> str:
+    raw = _thumb_jpeg_bytes(data)
+    key = f"{out_dir.name}/img_{seq:03d}.jpg"
+    # Если store умеет сохранять в БД (PersistentStore) — пишем туда.
+    save_thumb = getattr(store, "save_thumb", None) if store is not None else None
+    if callable(save_thumb):
+        return save_thumb(key, raw)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"img_{seq:03d}.jpg"
+    path.write_bytes(raw)
     return str(path)
 
 
@@ -625,7 +637,9 @@ def process_document(
     text_tau: float = 0.82,
 ) -> ImageCheckResult:
     p = Path(path)
-    thumb_root = thumb_dir or (store.db_path.parent / "thumbs" / document_id)
+    data_root = getattr(store, "db_path", DEFAULT_DB)
+    data_root = Path(data_root).parent if data_root else DEFAULT_DB.parent
+    thumb_root = thumb_dir or (data_root / "thumbs" / document_id)
     corpus = store.iter_entries(exclude_task_id=task_id)
     ocr_on = use_ocr and ocr_available()
 
@@ -634,7 +648,7 @@ def process_document(
 
     for blob in extract_images(p):
         phash64 = compute_phash(blob)
-        thumb = _save_thumb(blob.data, thumb_root, blob.seq)
+        thumb = _save_thumb(blob.data, thumb_root, blob.seq, store=store)
         ocr_text = extract_text(blob) if ocr_on else ""
         matches = find_matches(
             phash64, blob, corpus, tau=tau, ocr_text=ocr_text, text_tau=text_tau
@@ -691,12 +705,14 @@ def index_document(
     use_ocr: bool = True,
 ) -> int:
     p = Path(path)
-    thumb_root = thumb_dir or (store.db_path.parent / "thumbs" / document_id)
+    data_root = getattr(store, "db_path", DEFAULT_DB)
+    data_root = Path(data_root).parent if data_root else DEFAULT_DB.parent
+    thumb_root = thumb_dir or (data_root / "thumbs" / document_id)
     ocr_on = use_ocr and ocr_available()
     count = 0
     for blob in extract_images(p):
         phash64 = compute_phash(blob)
-        thumb = _save_thumb(blob.data, thumb_root, blob.seq)
+        thumb = _save_thumb(blob.data, thumb_root, blob.seq, store=store)
         ocr_text = extract_text(blob) if ocr_on else ""
         store.add_entry(
             CorpusEntry(
@@ -806,10 +822,15 @@ class ImageBorrowingService:
         result = svc.check("student.docx", task_id="2", document_id="stu-42")
     """
 
-    def __init__(self, db_path: str | Path | None = None, tau: int = 10):
+    def __init__(
+        self,
+        db_path: str | Path | None = None,
+        tau: int = 10,
+        store=None,
+    ):
         self.db_path = Path(db_path or DEFAULT_DB)
         self.tau = tau
-        self._store = CorpusStore(self.db_path)
+        self._store = store if store is not None else CorpusStore(self.db_path)
 
     @property
     def store(self) -> CorpusStore:

@@ -6,25 +6,23 @@
 """
 from __future__ import annotations
 
-import json
 import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from image_pipeline import DEFAULT_DB, ImageBorrowingService, ImageCheckResult, ocr_available
+from image_pipeline import ImageBorrowingService, ImageCheckResult, ocr_available
+from web.storage import PersistentStore, storage_info
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 UPLOAD_DIR = DATA_DIR / "uploads"
-JOBS_DIR = DATA_DIR / "jobs"
-DB_PATH = Path(DEFAULT_DB)
 
 ALLOWED_EXT = {".pdf", ".docx", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp"}
 VIA_LABELS = {
@@ -34,19 +32,26 @@ VIA_LABELS = {
 }
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-JOBS_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 (DATA_DIR / "thumbs").mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="Проверка иллюстраций", version="1.0.0")
+app = FastAPI(title="Проверка иллюстраций", version="1.1.0")
 app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
-app.mount("/thumbs", StaticFiles(directory=str(DATA_DIR / "thumbs")), name="thumbs")
 templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
 templates.env.globals["via_label"] = lambda key: VIA_LABELS.get(key, key)
 
+_store: PersistentStore | None = None
+
+
+def get_store() -> PersistentStore:
+    global _store
+    if _store is None:
+        _store = PersistentStore()
+    return _store
+
 
 def _svc(tau: int = 10) -> ImageBorrowingService:
-    return ImageBorrowingService(db_path=DB_PATH, tau=tau)
+    store = get_store()
+    return ImageBorrowingService(db_path=store.db_path, tau=tau, store=store)
 
 
 def _safe_name(name: str) -> str:
@@ -57,12 +62,16 @@ def _safe_name(name: str) -> str:
 def _thumb_url(path: str) -> str:
     if not path:
         return ""
+    if path.startswith("db:"):
+        return f"/media/thumb/{path[3:]}"
     p = Path(path)
     try:
         rel = p.resolve().relative_to((DATA_DIR / "thumbs").resolve())
-        return f"/thumbs/{rel.as_posix()}"
+        return f"/media/file/{rel.as_posix()}"
     except ValueError:
-        return ""
+        name = p.name
+        parent = p.parent.name
+        return f"/media/thumb/{parent}/{name}"
 
 
 def _result_to_view(result: ImageCheckResult) -> dict:
@@ -100,17 +109,14 @@ def _result_to_view(result: ImageCheckResult) -> dict:
 
 
 def _save_job(job_id: str, payload: dict) -> None:
-    (JOBS_DIR / f"{job_id}.json").write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    get_store().save_job(job_id, payload)
 
 
 def _load_job(job_id: str) -> dict:
-    path = JOBS_DIR / f"{job_id}.json"
-    if not path.is_file():
+    job = get_store().load_job(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Результат не найден")
-    return json.loads(path.read_text(encoding="utf-8"))
+    return job
 
 
 def _merge_results(parts: list[ImageCheckResult], *, task_id: str, document_id: str) -> ImageCheckResult:
@@ -140,10 +146,16 @@ def _merge_results(parts: list[ImageCheckResult], *, task_id: str, document_id: 
     )
 
 
+@app.on_event("startup")
+def _startup() -> None:
+    get_store()
+
+
 @app.get("/", response_class=HTMLResponse)
 async def upload_page(request: Request):
     svc = _svc()
     size = svc.corpus_size()
+    info = storage_info()
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -151,13 +163,13 @@ async def upload_page(request: Request):
             "corpus_size": size,
             "library_size": size,
             "ocr_available": ocr_available(),
+            "storage": info,
         },
     )
 
 
 @app.post("/check")
 async def check_upload(
-    request: Request,
     files: list[UploadFile] = File(...),
     mode: str = Form("check"),
     task_id: str = Form(""),
@@ -260,7 +272,32 @@ async def results_page(request: Request, job_id: str):
     return templates.TemplateResponse(request, template, {"job": job, "job_id": job_id})
 
 
+@app.get("/media/thumb/{thumb_key:path}")
+async def media_thumb(thumb_key: str):
+    data = get_store().get_thumb(thumb_key)
+    if not data:
+        # fallback: файл на диске
+        path = DATA_DIR / "thumbs" / thumb_key
+        if path.is_file():
+            return Response(path.read_bytes(), media_type="image/jpeg")
+        raise HTTPException(status_code=404, detail="Миниатюра не найдена")
+    return Response(data, media_type="image/jpeg")
+
+
+@app.get("/media/file/{file_path:path}")
+async def media_file(file_path: str):
+    path = (DATA_DIR / "thumbs" / file_path).resolve()
+    root = (DATA_DIR / "thumbs").resolve()
+    if not str(path).startswith(str(root)) or not path.is_file():
+        raise HTTPException(status_code=404, detail="Файл не найден")
+    return Response(path.read_bytes(), media_type="image/jpeg")
+
+
 @app.get("/api/corpus")
 async def corpus_info():
     svc = _svc()
-    return {"corpus_size": svc.corpus_size(), "ocr_available": ocr_available()}
+    return {
+        "corpus_size": svc.corpus_size(),
+        "ocr_available": ocr_available(),
+        "storage": storage_info(),
+    }

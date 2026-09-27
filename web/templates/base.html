@@ -17,6 +17,9 @@
       <span class="meta" title="Сколько эталонных изображений уже сохранено для сравнения">
         В базе эталонов: <b>{{ library_size if library_size is defined else job.corpus_size }}</b>
       </span>
+      {% if storage is defined and storage.persistent %}
+      <span class="meta ok-pill">хранение: БД</span>
+      {% endif %}
     </nav>
   </header>
   <main class="wrap">

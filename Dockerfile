@@ -18,6 +18,7 @@ RUN pip install -r /app/requirements.txt
 
 COPY image_pipeline /app/image_pipeline
 COPY web /app/web
+COPY requirements.txt /app/requirements.txt
 
 RUN mkdir -p /app/data/uploads /app/data/jobs /app/data/thumbs
 
