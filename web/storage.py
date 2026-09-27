@@ -315,6 +315,194 @@ class PersistentStore:
             ).fetchone()
         return bytes(row[0]) if row else None
 
+    def delete_thumb(self, thumb_path: str) -> None:
+        if not thumb_path:
+            return
+        key = thumb_path[3:] if thumb_path.startswith("db:") else thumb_path.replace("\\", "/")
+        # для файловых путей берём хвост document/img_xxx.jpg
+        if "/" in key and not thumb_path.startswith("db:"):
+            parts = Path(key).parts
+            if len(parts) >= 2:
+                key = f"{parts[-2]}/{parts[-1]}"
+        if self.backend == "postgres":
+            with self._pg() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM thumbnails WHERE thumb_key = %s", (key,))
+                conn.commit()
+            return
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("DELETE FROM thumbnails WHERE thumb_key = ?", (key,))
+
+    def list_library(self, document_id: str | None = None) -> list[dict[str, Any]]:
+        if self.backend == "postgres":
+            with self._pg() as conn:
+                with conn.cursor() as cur:
+                    if document_id:
+                        cur.execute(
+                            """
+                            SELECT id, phash64, source_task_id, source_document_id,
+                                   sha256, byte_size, thumb_path, ocr_text, indexed_at
+                            FROM corpus_image_hash
+                            WHERE source_document_id = %s
+                            ORDER BY id
+                            """,
+                            (document_id,),
+                        )
+                    else:
+                        cur.execute(
+                            """
+                            SELECT id, phash64, source_task_id, source_document_id,
+                                   sha256, byte_size, thumb_path, ocr_text, indexed_at
+                            FROM corpus_image_hash
+                            ORDER BY source_document_id, id
+                            """
+                        )
+                    rows = cur.fetchall()
+            return [
+                {
+                    "id": int(r[0]),
+                    "phash64": r[1],
+                    "source_task_id": r[2],
+                    "source_document_id": r[3],
+                    "sha256": r[4] or "",
+                    "byte_size": r[5] or 0,
+                    "thumb_path": r[6] or "",
+                    "ocr_text": r[7] or "",
+                    "indexed_at": str(r[8] or ""),
+                }
+                for r in rows
+            ]
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            if document_id:
+                rows = conn.execute(
+                    """
+                    SELECT id, phash64, source_task_id, source_document_id,
+                           sha256, byte_size, thumb_path, ocr_text, indexed_at
+                    FROM corpus_image_hash
+                    WHERE source_document_id = ?
+                    ORDER BY id
+                    """,
+                    (document_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT id, phash64, source_task_id, source_document_id,
+                           sha256, byte_size, thumb_path, ocr_text, indexed_at
+                    FROM corpus_image_hash
+                    ORDER BY source_document_id, id
+                    """
+                ).fetchall()
+        return [
+            {
+                "id": int(r["id"]),
+                "phash64": r["phash64"],
+                "source_task_id": r["source_task_id"],
+                "source_document_id": r["source_document_id"],
+                "sha256": r["sha256"] or "",
+                "byte_size": r["byte_size"] or 0,
+                "thumb_path": r["thumb_path"] or "",
+                "ocr_text": r["ocr_text"] or "",
+                "indexed_at": str(r["indexed_at"] or ""),
+            }
+            for r in rows
+        ]
+
+    def list_documents(self) -> list[dict[str, Any]]:
+        if self.backend == "postgres":
+            with self._pg() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT source_document_id, source_task_id, COUNT(*) AS n
+                        FROM corpus_image_hash
+                        GROUP BY source_document_id, source_task_id
+                        ORDER BY source_document_id
+                        """
+                    )
+                    rows = cur.fetchall()
+            return [
+                {
+                    "document_id": r[0],
+                    "task_id": r[1],
+                    "count": int(r[2]),
+                    "label": f"{r[0]} ({r[2]} шт.)",
+                }
+                for r in rows
+            ]
+
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT source_document_id, source_task_id, COUNT(*) AS n
+                FROM corpus_image_hash
+                GROUP BY source_document_id, source_task_id
+                ORDER BY source_document_id
+                """
+            ).fetchall()
+        return [
+            {
+                "document_id": r[0],
+                "task_id": r[1],
+                "count": int(r[2]),
+                "label": f"{r[0]} ({r[2]} шт.)",
+            }
+            for r in rows
+        ]
+
+    def delete_entry(self, entry_id: int) -> bool:
+        if self.backend == "postgres":
+            with self._pg() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT thumb_path FROM corpus_image_hash WHERE id = %s",
+                        (entry_id,),
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        return False
+                    thumb_path = row[0] or ""
+                    cur.execute("DELETE FROM corpus_image_hash WHERE id = %s", (entry_id,))
+                conn.commit()
+            self.delete_thumb(thumb_path)
+            return True
+
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT thumb_path FROM corpus_image_hash WHERE id = ?",
+                (entry_id,),
+            ).fetchone()
+            if not row:
+                return False
+            thumb_path = row[0] or ""
+            conn.execute("DELETE FROM corpus_image_hash WHERE id = ?", (entry_id,))
+        self.delete_thumb(thumb_path)
+        return True
+
+    def delete_document(self, document_id: str) -> int:
+        entries = self.list_library(document_id=document_id)
+        if self.backend == "postgres":
+            with self._pg() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM corpus_image_hash WHERE source_document_id = %s",
+                        (document_id,),
+                    )
+                    deleted = cur.rowcount
+                conn.commit()
+        else:
+            with sqlite3.connect(self.db_path) as conn:
+                cur = conn.execute(
+                    "DELETE FROM corpus_image_hash WHERE source_document_id = ?",
+                    (document_id,),
+                )
+                deleted = cur.rowcount
+        for e in entries:
+            self.delete_thumb(e.get("thumb_path") or "")
+        return int(deleted or 0)
+
 
 def storage_info() -> dict[str, Any]:
     dsn = database_url()

@@ -268,8 +268,70 @@ async def check_upload(
 @app.get("/results/{job_id}", response_class=HTMLResponse)
 async def results_page(request: Request, job_id: str):
     job = _load_job(job_id)
+    store = get_store()
     template = "results_index.html" if job.get("kind") == "index" else "results.html"
-    return templates.TemplateResponse(request, template, {"job": job, "job_id": job_id})
+    return templates.TemplateResponse(
+        request,
+        template,
+        {
+            "job": job,
+            "job_id": job_id,
+            "library_size": store.count(),
+            "storage": storage_info(),
+        },
+    )
+
+
+@app.get("/library", response_class=HTMLResponse)
+async def library_page(request: Request, doc: str = ""):
+    store = get_store()
+    documents = store.list_documents()
+    selected = doc.strip()
+    if selected and not any(d["document_id"] == selected for d in documents):
+        selected = ""
+    items = store.list_library(document_id=selected or None)
+    for item in items:
+        item["thumb_url"] = _thumb_url(item.get("thumb_path") or "")
+        item["label"] = f"№{item['id']} · {item['source_document_id']}"
+    return templates.TemplateResponse(
+        request,
+        "library.html",
+        {
+            "documents": documents,
+            "items": items,
+            "selected_doc": selected,
+            "library_size": store.count(),
+            "storage": storage_info(),
+            "message": request.query_params.get("msg", ""),
+        },
+    )
+
+
+@app.post("/library/delete")
+async def library_delete(
+    entry_id: int = Form(0),
+    document_id: str = Form(""),
+    delete_scope: str = Form("one"),
+):
+    store = get_store()
+    if delete_scope == "document":
+        doc = document_id.strip()
+        if not doc:
+            raise HTTPException(status_code=400, detail="Выберите набор в списке")
+        n = store.delete_document(doc)
+        return RedirectResponse(
+            url=f"/library?msg=Удалено картинок из набора: {n}",
+            status_code=303,
+        )
+    if entry_id <= 0:
+        raise HTTPException(status_code=400, detail="Выберите картинку в списке")
+    ok = store.delete_entry(entry_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Картинка не найдена")
+    return RedirectResponse(
+        url="/library?msg=Картинка удалена из базы эталонов",
+        status_code=303,
+    )
 
 
 @app.get("/media/thumb/{thumb_key:path}")

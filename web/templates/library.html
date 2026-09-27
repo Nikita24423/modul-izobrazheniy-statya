@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}База эталонов{% endblock %}
+{% block content %}
+<section class="hero compact">
+  <p class="eyebrow">Управление</p>
+  <h1>База эталонов</h1>
+  <p class="lead">
+    Здесь хранятся эталонные картинки для сравнения.
+    Выберите картинку в списке — справа сразу появится превью — и при необходимости удалите.
+  </p>
+</section>
+
+{% if message %}
+<div class="notice ok-notice">{{ message }}</div>
+{% endif %}
+
+{% if library_size == 0 %}
+<div class="notice">
+  База пустая. На главной странице выберите «Сохранить как эталон» и загрузите файлы.
+</div>
+<p class="actions"><a class="btn" href="/">Добавить эталоны</a></p>
+{% else %}
+
+<section class="panel library-panel">
+  <div class="step-label">Выбрать набор</div>
+  <form class="library-row" method="get" action="/library" id="doc-form">
+    <label class="grow">
+      Набор эталонов
+      <select name="doc" id="doc-select">
+        <option value="">Все картинки ({{ library_size }})</option>
+        {% for d in documents %}
+        <option value="{{ d.document_id }}" {% if selected_doc == d.document_id %}selected{% endif %}>
+          {{ d.label }}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn ghost">Показать</button>
+  </form>
+
+  <form class="library-row danger-row" method="post" action="/library/delete" onsubmit="return confirm('Удалить весь выбранный набор эталонов?');">
+    <input type="hidden" name="delete_scope" value="document">
+    <label class="grow">
+      Удалить весь набор
+      <select name="document_id" required>
+        <option value="" disabled {% if not selected_doc %}selected{% endif %}>Выберите набор…</option>
+        {% for d in documents %}
+        <option value="{{ d.document_id }}" {% if selected_doc == d.document_id %}selected{% endif %}>
+          {{ d.label }}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn danger">Удалить набор</button>
+  </form>
+
+  <div class="step-label">Выбрать и посмотреть картинку</div>
+  <div class="preview-layout">
+    <form class="library-col" method="post" action="/library/delete" id="delete-one-form" onsubmit="return confirm('Удалить эту картинку из базы?');">
+      <input type="hidden" name="delete_scope" value="one">
+      <label class="grow">
+        Картинка
+        <select name="entry_id" id="entry-select" required>
+          <option value="" disabled selected data-thumb="" data-doc="" data-task="">Выберите картинку…</option>
+          {% for item in items %}
+          <option
+            value="{{ item.id }}"
+            data-thumb="{{ item.thumb_url }}"
+            data-doc="{{ item.source_document_id }}"
+            data-task="{{ item.source_task_id }}"
+            data-when="{{ item.indexed_at }}"
+          >{{ item.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="btn danger" id="delete-one-btn" disabled>Удалить выбранную</button>
+    </form>
+
+    <aside class="preview-box" id="preview-box" aria-live="polite">
+      <div class="preview-empty" id="preview-empty">Выберите картинку в списке — здесь появится превью</div>
+      <figure class="preview-figure" id="preview-figure" hidden>
+        <img id="preview-img" src="" alt="Превью эталона">
+        <figcaption>
+          <strong id="preview-title"></strong>
+          <span id="preview-meta"></span>
+        </figcaption>
+      </figure>
+    </aside>
+  </div>
+</section>
+
+{% if items %}
+<section class="cards library-cards">
+  <h2 class="section-title">
+    {% if selected_doc %}Набор «{{ selected_doc }}»{% else %}Все эталоны{% endif %}
+    · {{ items|length }}
+  </h2>
+  {% for item in items %}
+  <article class="card clean library-card" data-entry-id="{{ item.id }}">
+    <div class="thumbs">
+      <figure>
+        {% if item.thumb_url %}
+        <img src="{{ item.thumb_url }}" alt="Эталон {{ item.id }}">
+        {% else %}
+        <div class="thumb-placeholder">нет фото</div>
+        {% endif %}
+        <figcaption>№{{ item.id }}</figcaption>
+      </figure>
+    </div>
+    <div class="body">
+      <p class="status">{{ item.source_document_id }}</p>
+      <p>Группа / задание: {{ item.source_task_id }}</p>
+      {% if item.indexed_at %}<p class="muted">Добавлено: {{ item.indexed_at }}</p>{% endif %}
+      <button type="button" class="btn ghost small pick-btn" data-id="{{ item.id }}">Выбрать в списке</button>
+      <form method="post" action="/library/delete" class="inline-del" onsubmit="return confirm('Удалить эту картинку?');">
+        <input type="hidden" name="delete_scope" value="one">
+        <input type="hidden" name="entry_id" value="{{ item.id }}">
+        <button type="submit" class="btn danger small">Удалить</button>
+      </form>
+    </div>
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
+
+<p class="actions">
+  <a class="btn ghost" href="/">К проверке</a>
+</p>
+{% endif %}
+<script>
+  const docSelect = document.getElementById('doc-select');
+  const docForm = document.getElementById('doc-form');
+  if (docSelect && docForm) {
+    docSelect.addEventListener('change', () => docForm.submit());
+  }
+
+  const entrySelect = document.getElementById('entry-select');
+  const deleteBtn = document.getElementById('delete-one-btn');
+  const previewEmpty = document.getElementById('preview-empty');
+  const previewFigure = document.getElementById('preview-figure');
+  const previewImg = document.getElementById('preview-img');
+  const previewTitle = document.getElementById('preview-title');
+  const previewMeta = document.getElementById('preview-meta');
+
+  function showPreview() {
+    if (!entrySelect) return;
+    const opt = entrySelect.options[entrySelect.selectedIndex];
+    const thumb = opt?.dataset?.thumb || '';
+    const hasValue = Boolean(entrySelect.value);
+    if (deleteBtn) deleteBtn.disabled = !hasValue;
+
+    if (!hasValue || !thumb) {
+      if (previewEmpty) previewEmpty.hidden = false;
+      if (previewFigure) previewFigure.hidden = true;
+      if (previewImg) previewImg.removeAttribute('src');
+      return;
+    }
+
+    if (previewEmpty) previewEmpty.hidden = true;
+    if (previewFigure) previewFigure.hidden = false;
+    if (previewImg) {
+      previewImg.src = thumb;
+      previewImg.alt = `Эталон №${opt.value}`;
+    }
+    if (previewTitle) previewTitle.textContent = `№${opt.value} · ${opt.dataset.doc || ''}`;
+    if (previewMeta) {
+      const parts = [];
+      if (opt.dataset.task) parts.push(`задание: ${opt.dataset.task}`);
+      if (opt.dataset.when) parts.push(`добавлено: ${opt.dataset.when}`);
+      previewMeta.textContent = parts.join(' · ');
+    }
+
+    document.querySelectorAll('.library-card').forEach(card => {
+      card.classList.toggle('is-selected', card.dataset.entryId === opt.value);
+    });
+  }
+
+  if (entrySelect) {
+    entrySelect.addEventListener('change', showPreview);
+    showPreview();
+  }
+
+  document.querySelectorAll('.pick-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!entrySelect) return;
+      entrySelect.value = btn.dataset.id;
+      entrySelect.dispatchEvent(new Event('change'));
+      entrySelect.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+</script>
+{% endblock %}

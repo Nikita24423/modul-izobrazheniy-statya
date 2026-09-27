@@ -14,8 +14,10 @@
   <header class="top">
     <a class="brand" href="/">Проверка картинок</a>
     <nav>
+      <a href="/">Проверка</a>
+      <a href="/library">База эталонов</a>
       <span class="meta" title="Сколько эталонных изображений уже сохранено для сравнения">
-        В базе эталонов: <b>{{ library_size if library_size is defined else job.corpus_size }}</b>
+        В базе: <b>{{ library_size if library_size is defined else (job.corpus_size if job is defined else 0) }}</b>
       </span>
       {% if storage is defined and storage.persistent %}
       <span class="meta ok-pill">хранение: БД</span>
