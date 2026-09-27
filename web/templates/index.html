@@ -35,13 +35,28 @@
         </label>
         <ul class="file-list" id="file-list-query"></ul>
       </div>
-      <div class="drop" id="dropzone-refs">
-        <input type="file" name="references" id="files-refs" multiple accept="{{ accept_attr }}">
-        <label for="files-refs" class="drop-label">
-          <strong>Эталоны для сравнения</strong>
-          <span>1 или несколько файлов</span>
+      <div class="refs-column">
+        <label class="library-pick">
+          Эталоны из базы
+          <select name="library_docs" id="library-docs" multiple size="{{ 4 if documents|length > 4 else (documents|length if documents|length > 0 else 2) }}">
+            {% if documents %}
+              {% for d in documents %}
+              <option value="{{ d.document_id }}">{{ d.label }}</option>
+              {% endfor %}
+            {% else %}
+              <option value="" disabled>База пока пустая</option>
+            {% endif %}
+          </select>
+          <span class="hint">Удерживайте Ctrl (⌘), чтобы выбрать несколько</span>
         </label>
-        <ul class="file-list" id="file-list-refs"></ul>
+        <div class="drop" id="dropzone-refs">
+          <input type="file" name="references" id="files-refs" multiple accept="{{ accept_attr }}">
+          <label for="files-refs" class="drop-label">
+            <strong>Или загрузите новые эталоны</strong>
+            <span>1 или несколько файлов</span>
+          </label>
+          <ul class="file-list" id="file-list-refs"></ul>
+        </div>
       </div>
     </div>
   </div>
@@ -139,9 +154,9 @@
     saveAfter.style.display = isCheck ? 'flex' : 'none';
     checkUploads.hidden = !isCheck;
     indexUploads.hidden = isCheck;
-    qInput.required = isCheck;
-    rInput.required = isCheck;
-    iInput.required = !isCheck;
+  qInput.required = isCheck;
+  rInput.required = false;
+  iInput.required = !isCheck;
     // чтобы в другой режим не уходили лишние файлы
     qInput.disabled = !isCheck;
     rInput.disabled = !isCheck;

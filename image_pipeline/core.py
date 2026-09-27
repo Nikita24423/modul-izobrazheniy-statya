@@ -715,12 +715,16 @@ def process_document(
     index_to_corpus: bool = True,
     use_ocr: bool = True,
     text_tau: float = 0.82,
+    include_document_ids: list[str] | None = None,
 ) -> ImageCheckResult:
     p = Path(path)
     data_root = getattr(store, "db_path", DEFAULT_DB)
     data_root = Path(data_root).parent if data_root else DEFAULT_DB.parent
     thumb_root = thumb_dir or (data_root / "thumbs" / document_id)
     corpus = store.iter_entries(exclude_task_id=task_id)
+    if include_document_ids is not None:
+        allow = set(include_document_ids)
+        corpus = [e for e in corpus if e.source_document_id in allow]
     ocr_on = use_ocr and ocr_available()
 
     records: list[DocumentImageRecord] = []
@@ -945,6 +949,7 @@ class ImageBorrowingService:
         tau: int | None = None,
         use_ocr: bool = True,
         text_tau: float = 0.82,
+        include_document_ids: list[str] | None = None,
     ) -> ImageCheckResult:
         return process_document(
             path,
@@ -955,6 +960,7 @@ class ImageBorrowingService:
             index_to_corpus=index_to_corpus,
             use_ocr=use_ocr,
             text_tau=text_tau,
+            include_document_ids=include_document_ids,
         )
 
     def check_and_report(

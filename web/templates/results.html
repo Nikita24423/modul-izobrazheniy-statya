@@ -32,7 +32,11 @@
     <strong>
       {% if job.reference_files is defined and job.reference_files %}
         {{ job.reference_files | join(', ') }}
-      {% else %}
+        {% if job.library_docs is defined and job.library_docs %}; {% endif %}
+      {% endif %}
+      {% if job.library_docs is defined and job.library_docs %}
+        из базы: {{ job.library_docs | join(', ') }}
+      {% elif not (job.reference_files is defined and job.reference_files) %}
         из базы
       {% endif %}
     </strong>

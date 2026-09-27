@@ -167,6 +167,7 @@ async def upload_page(request: Request):
             "storage": info,
             "formats": supported_formats(),
             "accept_attr": ",".join(sorted(ALLOWED_EXT)) + ",image/*",
+            "documents": get_store().list_documents(),
         },
     )
 
@@ -202,6 +203,7 @@ async def check_upload(
     files: list[UploadFile] | None = File(None),
     references: list[UploadFile] | None = File(None),
     index_files: list[UploadFile] | None = File(None),
+    library_docs: list[str] = Form(default=[]),
     mode: str = Form("check"),
     task_id: str = Form(""),
     document_id: str = Form(""),
@@ -211,6 +213,10 @@ async def check_upload(
     files = files or []
     references = references or []
     index_files = index_files or []
+    # Form(list) sometimes приходит строкой
+    if isinstance(library_docs, str):
+        library_docs = [library_docs] if library_docs else []
+    library_docs = [d.strip() for d in library_docs if d and d.strip()]
 
     job_id = uuid.uuid4().hex[:12]
     task_id = (task_id or f"web-{job_id}").strip()
@@ -248,23 +254,27 @@ async def check_upload(
             )
             return RedirectResponse(url=f"/results/{job_id}", status_code=303)
 
-        # Режим проверки: отдельно картинки и эталоны
         query_paths = _save_uploads(files, job_dir / "query")
         ref_paths = _save_uploads(references, job_dir / "refs")
         if not query_paths:
             raise HTTPException(status_code=400, detail="Загрузите изображение для проверки")
-        if not ref_paths:
+        if not ref_paths and not library_docs:
             raise HTTPException(
                 status_code=400,
-                detail="Загрузите хотя бы один эталон для сравнения",
+                detail="Выберите эталоны из базы или загрузите хотя бы один новый",
             )
 
+        include_ids: list[str] = list(library_docs)
         ref_task_id = f"ref-{job_id}"
+        uploaded_ref_docs: list[str] = []
         for i, path in enumerate(ref_paths):
+            doc_ref = f"etalon-{i + 1}-{path.stem}"
+            uploaded_ref_docs.append(doc_ref)
+            include_ids.append(doc_ref)
             svc.add_to_corpus(
                 path,
                 task_id=ref_task_id,
-                document_id=f"etalon-{i + 1}-{path.stem}",
+                document_id=doc_ref,
             )
 
         check_task_id = f"check-{job_id}"
@@ -278,12 +288,12 @@ async def check_upload(
                     document_id=doc_id,
                     index_to_corpus=False,
                     tau=tau,
+                    include_document_ids=include_ids,
                 )
             )
 
-        # если пользователь не хочет оставлять эталоны в базе — удаляем временный набор
         if not index_to_corpus:
-            for doc in {f"etalon-{i + 1}-{p.stem}" for i, p in enumerate(ref_paths)}:
+            for doc in uploaded_ref_docs:
                 get_store().delete_document(doc)
 
         result = (
@@ -299,6 +309,7 @@ async def check_upload(
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "files": [p.name for p in query_paths],
                 "reference_files": [p.name for p in ref_paths],
+                "library_docs": library_docs,
                 "corpus_size": svc.corpus_size(),
             }
         )
