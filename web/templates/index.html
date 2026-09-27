@@ -1,17 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Проверка картинок{% endblock %}
 {% block content %}
-<ol class="howto">
-  <li>
-    <strong>Загрузите картинку для проверки</strong>
-    <span>фото или документ, который нужно проверить</span>
-  </li>
-  <li>
-    <strong>Загрузите эталоны</strong>
-    <span>одну или несколько картинок, с которыми сравнивать</span>
-  </li>
-</ol>
-
 <form class="panel" action="/check" method="post" enctype="multipart/form-data" id="check-form">
   <div class="step-label">1. Что сделать</div>
   <div class="modes">
