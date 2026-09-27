@@ -3,57 +3,75 @@
 {% block content %}
 <ol class="howto">
   <li>
-    <strong>Сначала сохраните эталоны</strong>
-    <span>методички, чужие работы, картинки из интернета — то, с чем сравнивать</span>
+    <strong>Загрузите картинку для проверки</strong>
+    <span>фото или документ, который нужно проверить</span>
   </li>
   <li>
-    <strong>Потом проверьте работу</strong>
-    <span>студентский файл или свои фото — найдём похожие на эталоны</span>
+    <strong>Загрузите эталоны</strong>
+    <span>одну или несколько картинок, с которыми сравнивать</span>
   </li>
 </ol>
-
-{% if library_size == 0 %}
-<div class="notice">
-  База эталонов пока пустая. Сначала выберите режим
-  «Сохранить как эталон», иначе при проверке не с чем сравнивать.
-</div>
-{% endif %}
 
 <form class="panel" action="/check" method="post" enctype="multipart/form-data" id="check-form">
   <div class="step-label">1. Что сделать</div>
   <div class="modes">
     <label class="mode">
-      <input type="radio" name="mode" value="check" {% if library_size > 0 %}checked{% endif %}>
+      <input type="radio" name="mode" value="check" checked>
       <span>
         <strong>Проверить на совпадения</strong>
-        Сравнить загруженные картинки с базой эталонов
+        Сравнить картинку с эталонами
       </span>
     </label>
     <label class="mode">
-      <input type="radio" name="mode" value="index" {% if library_size == 0 %}checked{% endif %}>
+      <input type="radio" name="mode" value="index">
       <span>
         <strong>Сохранить как эталон</strong>
-        Добавить картинки в базу для будущих проверок
+        Добавить картинки в базу на будущее
       </span>
     </label>
   </div>
 
-  <div class="step-label">2. Загрузите файлы</div>
   <div class="formats-help">
     <div><strong>Фото:</strong> PNG, JPG/JPEG/JFIF, WEBP, GIF, BMP, TIFF, HEIC, AVIF</div>
   </div>
-  <div class="drop" id="dropzone">
-    <input type="file" name="files" id="files" multiple accept="{{ accept_attr }}" required>
-    <label for="files" class="drop-label">
-      <strong>Нажмите или перетащите файлы сюда</strong>
-      <span>Можно несколько файлов разных форматов сразу</span>
-    </label>
-    <ul class="file-list" id="file-list"></ul>
+
+  <div id="check-uploads">
+    <div class="step-label">2. Загрузите файлы</div>
+    <div class="dual-upload">
+      <div class="drop" id="dropzone-query">
+        <input type="file" name="files" id="files-query" multiple accept="{{ accept_attr }}">
+        <label for="files-query" class="drop-label">
+          <strong>Что проверить</strong>
+          <span>1 или несколько файлов</span>
+        </label>
+        <ul class="file-list" id="file-list-query"></ul>
+      </div>
+      <div class="drop" id="dropzone-refs">
+        <input type="file" name="references" id="files-refs" multiple accept="{{ accept_attr }}">
+        <label for="files-refs" class="drop-label">
+          <strong>Эталоны для сравнения</strong>
+          <span>1 или несколько файлов</span>
+        </label>
+        <ul class="file-list" id="file-list-refs"></ul>
+      </div>
+    </div>
+  </div>
+
+  <div id="index-uploads" hidden>
+    <div class="step-label">2. Загрузите эталоны в базу</div>
+    <div class="drop" id="dropzone-index">
+      <input type="file" name="index_files" id="files-index" multiple accept="{{ accept_attr }}">
+      <label for="files-index" class="drop-label">
+        <strong>Нажмите или перетащите файлы сюда</strong>
+        <span>Они попадут в базу эталонов</span>
+      </label>
+      <ul class="file-list" id="file-list-index"></ul>
+    </div>
   </div>
 
   <label class="check save-after" id="save-after">
-    <input type="checkbox" name="index_to_corpus" value="true">
-    После проверки тоже сохранить эти картинки как эталоны
+    <input type="checkbox" name="index_to_corpus" value="true" checked>
+    Сохранить эталоны в базу после проверки
   </label>
 
   <details class="advanced">
@@ -86,46 +104,64 @@
 </p>
 
 <script>
-  const input = document.getElementById('files');
-  const list = document.getElementById('file-list');
-  const drop = document.getElementById('dropzone');
   const btn = document.getElementById('submit-btn');
   const saveAfter = document.getElementById('save-after');
+  const checkUploads = document.getElementById('check-uploads');
+  const indexUploads = document.getElementById('index-uploads');
+  const qInput = document.getElementById('files-query');
+  const rInput = document.getElementById('files-refs');
+  const iInput = document.getElementById('files-index');
 
   function mode() {
     return document.querySelector('input[name="mode"]:checked')?.value || 'check';
   }
 
+  function bindDrop(dropId, input, listId) {
+    const drop = document.getElementById(dropId);
+    const list = document.getElementById(listId);
+    function render() {
+      list.innerHTML = '';
+      [...input.files].forEach(f => {
+        const li = document.createElement('li');
+        li.textContent = `${f.name} (${Math.round(f.size / 1024)} КБ)`;
+        list.appendChild(li);
+      });
+    }
+    input.addEventListener('change', render);
+    ['dragenter', 'dragover'].forEach(ev => {
+      drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); });
+    });
+    ['dragleave', 'drop'].forEach(ev => {
+      drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); });
+    });
+    drop.addEventListener('drop', e => {
+      input.files = e.dataTransfer.files;
+      render();
+    });
+  }
+
+  bindDrop('dropzone-query', qInput, 'file-list-query');
+  bindDrop('dropzone-refs', rInput, 'file-list-refs');
+  bindDrop('dropzone-index', iInput, 'file-list-index');
+
   function syncMode() {
     const isCheck = mode() === 'check';
     btn.textContent = isCheck ? 'Проверить' : 'Сохранить в базу эталонов';
     saveAfter.style.display = isCheck ? 'flex' : 'none';
+    checkUploads.hidden = !isCheck;
+    indexUploads.hidden = isCheck;
+    qInput.required = isCheck;
+    rInput.required = isCheck;
+    iInput.required = !isCheck;
+    // чтобы в другой режим не уходили лишние файлы
+    qInput.disabled = !isCheck;
+    rInput.disabled = !isCheck;
+    iInput.disabled = isCheck;
   }
 
   document.querySelectorAll('input[name="mode"]').forEach(el => {
     el.addEventListener('change', syncMode);
   });
   syncMode();
-
-  function render() {
-    list.innerHTML = '';
-    [...input.files].forEach(f => {
-      const li = document.createElement('li');
-      li.textContent = `${f.name} (${Math.round(f.size / 1024)} КБ)`;
-      list.appendChild(li);
-    });
-  }
-  input.addEventListener('change', render);
-
-  ['dragenter', 'dragover'].forEach(ev => {
-    drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); });
-  });
-  ['dragleave', 'drop'].forEach(ev => {
-    drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); });
-  });
-  drop.addEventListener('drop', e => {
-    input.files = e.dataTransfer.files;
-    render();
-  });
 </script>
 {% endblock %}

@@ -171,17 +171,46 @@ async def upload_page(request: Request):
     )
 
 
+def _save_uploads(uploads: list[UploadFile], dest_dir: Path) -> list[Path]:
+    saved: list[Path] = []
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    for upload in uploads:
+        if not upload.filename:
+            continue
+        suffix = Path(upload.filename).suffix.lower()
+        if suffix not in ALLOWED_EXT:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Формат не поддерживается: {suffix}. "
+                    f"Можно: фото ({', '.join(sorted(RASTER_EXT))}), "
+                    f"документы ({', '.join(sorted(SUPPORTED_DOC_EXT))})"
+                ),
+            )
+        dest = dest_dir / _safe_name(upload.filename)
+        # избегаем перезаписи одинаковых имён
+        if dest.exists():
+            dest = dest_dir / f"{dest.stem}_{uuid.uuid4().hex[:6]}{dest.suffix}"
+        with dest.open("wb") as out:
+            shutil.copyfileobj(upload.file, out)
+        saved.append(dest)
+    return saved
+
+
 @app.post("/check")
 async def check_upload(
-    files: list[UploadFile] = File(...),
+    files: list[UploadFile] | None = File(None),
+    references: list[UploadFile] | None = File(None),
+    index_files: list[UploadFile] | None = File(None),
     mode: str = Form("check"),
     task_id: str = Form(""),
     document_id: str = Form(""),
     tau: int = Form(10),
     index_to_corpus: bool = Form(False),
 ):
-    if not files or all(not f.filename for f in files):
-        raise HTTPException(status_code=400, detail="Выберите хотя бы один файл")
+    files = files or []
+    references = references or []
+    index_files = index_files or []
 
     job_id = uuid.uuid4().hex[:12]
     task_id = (task_id or f"web-{job_id}").strip()
@@ -191,32 +220,13 @@ async def check_upload(
     job_dir = UPLOAD_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
-    saved: list[Path] = []
     try:
-        for upload in files:
-            if not upload.filename:
-                continue
-            suffix = Path(upload.filename).suffix.lower()
-            if suffix not in ALLOWED_EXT:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"Формат не поддерживается: {suffix}. "
-                        f"Можно: фото ({', '.join(sorted(RASTER_EXT))}), "
-                        f"документы ({', '.join(sorted(SUPPORTED_DOC_EXT))})"
-                    ),
-                )
-            dest = job_dir / _safe_name(upload.filename)
-            with dest.open("wb") as out:
-                shutil.copyfileobj(upload.file, out)
-            saved.append(dest)
-
-        if not saved:
-            raise HTTPException(status_code=400, detail="Пустая загрузка")
-
         svc = _svc(tau=tau)
 
         if mode == "index":
+            saved = _save_uploads(index_files or files, job_dir / "index")
+            if not saved:
+                raise HTTPException(status_code=400, detail="Выберите файлы для базы эталонов")
             total = 0
             for path in saved:
                 total += svc.add_to_corpus(
@@ -238,27 +248,57 @@ async def check_upload(
             )
             return RedirectResponse(url=f"/results/{job_id}", status_code=303)
 
+        # Режим проверки: отдельно картинки и эталоны
+        query_paths = _save_uploads(files, job_dir / "query")
+        ref_paths = _save_uploads(references, job_dir / "refs")
+        if not query_paths:
+            raise HTTPException(status_code=400, detail="Загрузите изображение для проверки")
+        if not ref_paths:
+            raise HTTPException(
+                status_code=400,
+                detail="Загрузите хотя бы один эталон для сравнения",
+            )
+
+        ref_task_id = f"ref-{job_id}"
+        for i, path in enumerate(ref_paths):
+            svc.add_to_corpus(
+                path,
+                task_id=ref_task_id,
+                document_id=f"etalon-{i + 1}-{path.stem}",
+            )
+
+        check_task_id = f"check-{job_id}"
         parts: list[ImageCheckResult] = []
-        for i, path in enumerate(saved):
-            doc_id = document_id if len(saved) == 1 else f"{document_id}-{i + 1}"
+        for i, path in enumerate(query_paths):
+            doc_id = document_id if len(query_paths) == 1 else f"{document_id}-{i + 1}"
             parts.append(
                 svc.check(
                     path,
-                    task_id=task_id,
+                    task_id=check_task_id,
                     document_id=doc_id,
-                    index_to_corpus=index_to_corpus,
+                    index_to_corpus=False,
                     tau=tau,
                 )
             )
 
-        result = parts[0] if len(parts) == 1 else _merge_results(parts, task_id=task_id, document_id=document_id)
+        # если пользователь не хочет оставлять эталоны в базе — удаляем временный набор
+        if not index_to_corpus:
+            for doc in {f"etalon-{i + 1}-{p.stem}" for i, p in enumerate(ref_paths)}:
+                get_store().delete_document(doc)
+
+        result = (
+            parts[0]
+            if len(parts) == 1
+            else _merge_results(parts, task_id=check_task_id, document_id=document_id)
+        )
         view = _result_to_view(result)
         view.update(
             {
                 "kind": "check",
                 "job_id": job_id,
                 "created_at": datetime.now(timezone.utc).isoformat(),
-                "files": [p.name for p in saved],
+                "files": [p.name for p in query_paths],
+                "reference_files": [p.name for p in ref_paths],
                 "corpus_size": svc.corpus_size(),
             }
         )

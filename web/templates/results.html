@@ -12,7 +12,7 @@
   <p class="lead">В файле нет изображений подходящего размера (слишком мелкие иконки не учитываются).</p>
   {% elif borrowed == 0 %}
   <h1 class="ok">Совпадений нет</h1>
-  <p class="lead">Среди {{ total }} картинок не нашлось похожих на эталоны из базы.</p>
+  <p class="lead">Среди {{ total }} картинок не нашлось похожих на загруженные эталоны.</p>
   {% else %}
   <h1 class="bad">Найдены похожие картинки</h1>
   <p class="lead">
@@ -24,16 +24,22 @@
 
 <div class="stats">
   <div>
-    <span>Файлы</span>
-    <strong>{{ job.document_path }}</strong>
+    <span>Проверяли</span>
+    <strong>{{ job.files | join(', ') if job.files is defined else job.document_path }}</strong>
   </div>
   <div>
-    <span>Проверено картинок</span>
-    <strong>{{ total }}</strong>
+    <span>Эталоны</span>
+    <strong>
+      {% if job.reference_files is defined and job.reference_files %}
+        {{ job.reference_files | join(', ') }}
+      {% else %}
+        из базы
+      {% endif %}
+    </strong>
   </div>
   <div>
-    <span>Похожих на эталоны</span>
-    <strong class="{% if borrowed %}bad{% else %}ok{% endif %}">{{ borrowed }}</strong>
+    <span>Похожих</span>
+    <strong class="{% if borrowed %}bad{% else %}ok{% endif %}">{{ borrowed }} из {{ total }}</strong>
   </div>
 </div>
 
