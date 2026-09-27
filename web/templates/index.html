@@ -1,10 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Проверка картинок{% endblock %}
 {% block content %}
-<section class="hero">
-  <h1>Есть ли чужие картинки?</h1>
-</section>
-
 <ol class="howto">
   <li>
     <strong>Сначала сохраните эталоны</strong>
@@ -45,7 +41,6 @@
   <div class="step-label">2. Загрузите файлы</div>
   <div class="formats-help">
     <div><strong>Фото:</strong> PNG, JPG/JPEG/JFIF, WEBP, GIF, BMP, TIFF, HEIC, AVIF</div>
-    <div><strong>Документы:</strong> PDF, Word (DOCX), PowerPoint (PPTX), Excel (XLSX), OpenDocument (ODT/ODP)</div>
   </div>
   <div class="drop" id="dropzone">
     <input type="file" name="files" id="files" multiple accept="{{ accept_attr }}" required>
