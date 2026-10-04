@@ -20,7 +20,23 @@ from PIL import Image, ImageOps
 
 # --- модели -----------------------------------------------------------------
 
-MIN_AREA = 4096
+# Минимальная площадь картинки (px), ниже — считается декором и не проверяется.
+# 4096 = 64x64. При тестах сильного уменьшения (25% и мельче) мелкие картинки
+# из-за этого выпадают из выборки и процент совпадений считается по меньшему
+# числу изображений. Чтобы такие прогоны были сопоставимы между масштабами,
+# порог можно снизить: MIN_IMAGE_AREA=256 (т.е. 16x16).
+def _min_area_from_env(default: int = 4096) -> int:
+    raw = os.environ.get("MIN_IMAGE_AREA", "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value >= 0 else default
+
+
+MIN_AREA = _min_area_from_env()
 RASTER_EXT = {
     ".png",
     ".jpg",
@@ -535,10 +551,12 @@ def find_matches(
 
     for entry in corpus:
         d = hamming_distance(phash64, entry.phash64)
+        # d == 0 — максимально надёжное совпадение. Раньше здесь стояла проверка
+        # sha256/размера файла, которая отбрасывала именно такие совпадения:
+        # любая пересохранённая картинка (другой масштаб, grayscale, иное сжатие)
+        # имеет другой sha256, поэтому точные попадания терялись, а неточные —
+        # засчитывались. Сравнение перцептивное, побайтовое равенство здесь ни при чём.
         visual = d <= tau
-        if visual and d == 0 and entry.sha256 and blob.sha256 != entry.sha256:
-            if entry.byte_size and len(blob.data) != entry.byte_size:
-                visual = False
 
         sim = 0.0
         textual = False
