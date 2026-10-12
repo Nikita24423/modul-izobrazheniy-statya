@@ -625,3 +625,42 @@ figcaption {
   .top nav { font-size: 0.85rem; }
   .meta { width: 100%; }
 }
+
+/* --- Средние показатели визуального канала на странице результата --- */
+.metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  align-items: stretch;
+  margin-top: 1.1rem;
+}
+.metric {
+  background: var(--card, #fff);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.7rem 1.1rem;
+  min-width: 15rem;
+}
+.metric-label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted, #667);
+  margin-bottom: 0.15rem;
+}
+.metric-value {
+  font-size: 1.45rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.metric-value small {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted, #667);
+  margin-left: 0.25rem;
+}
+.metric-note {
+  flex-basis: 100%;
+  margin: 0.1rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted, #667);
+}

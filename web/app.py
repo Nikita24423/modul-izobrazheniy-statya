@@ -17,7 +17,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from image_pipeline import ImageBorrowingService, ImageCheckResult, ocr_available
-from image_pipeline.core import RASTER_EXT, SUPPORTED_DOC_EXT, supported_formats
+from image_pipeline.core import (
+    RASTER_EXT,
+    SUPPORTED_DOC_EXT,
+    hamming_stats,
+    supported_formats,
+)
 from web.storage import PersistentStore, storage_info
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -105,6 +110,9 @@ def _result_to_view(result: ImageCheckResult) -> dict:
         "n_match": result.n_match,
         "tau": result.tau,
         "ocr_enabled": result.ocr_enabled,
+        "avg_hamming": result.avg_hamming,
+        "avg_similarity_percent": result.avg_similarity_percent,
+        "n_visual": result.n_visual,
         "images": images,
     }
 
@@ -134,6 +142,7 @@ def _merge_results(parts: list[ImageCheckResult], *, task_id: str, document_id: 
     n_match = sum(1 for img in images if img.matches)
     p_img = 100.0 if n_total == 0 else round(100.0 * n_match / n_total, 2)
     names = ", ".join(Path(p.document_path).name for p in parts)
+    avg_d, avg_sim, n_visual = hamming_stats(images)
     return ImageCheckResult(
         task_id=task_id,
         document_id=document_id,
@@ -144,6 +153,9 @@ def _merge_results(parts: list[ImageCheckResult], *, task_id: str, document_id: 
         n_match=n_match,
         tau=parts[0].tau if parts else 10,
         ocr_enabled=any(p.ocr_enabled for p in parts),
+        avg_hamming=avg_d,
+        avg_similarity_percent=avg_sim,
+        n_visual=n_visual,
     )
 
 

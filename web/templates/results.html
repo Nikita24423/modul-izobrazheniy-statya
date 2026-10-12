@@ -20,6 +20,24 @@
     ({{ pct }}% заимствованных).
   </p>
   {% endif %}
+
+  {% if job.n_visual is defined and job.n_visual %}
+  <div class="metrics">
+    <div class="metric" title="Среднее расстояние Хэмминга между перцептивными хешами. 0 бит — отпечатки идентичны, 64 бита — полностью различны.">
+      <span class="metric-label">Среднее расстояние Хэмминга</span>
+      <strong class="metric-value">{{ job.avg_hamming }}<small> бит из 64</small></strong>
+    </div>
+    <div class="metric" title="Расстояние Хэмминга в процентах визуального сходства: (1 - d / 64) * 100%.">
+      <span class="metric-label">Среднее визуальное сходство</span>
+      <strong class="metric-value">{{ job.avg_similarity_percent }}<small>%</small></strong>
+    </div>
+    <p class="metric-note">
+      Рассчитано по {{ job.n_visual }}
+      {{ 'визуальному совпадению' if job.n_visual == 1 else 'визуальным совпадениям' }}
+      (канал pHash). Совпадения только по тексту OCR не учитываются.
+    </p>
+  </div>
+  {% endif %}
 </section>
 
 <div class="stats">

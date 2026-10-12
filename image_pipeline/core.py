@@ -150,6 +150,10 @@ class ImageCheckResult:
     n_match: int = 0
     tau: int = 10
     ocr_enabled: bool = False
+    # Средние показатели визуального канала по выборке.
+    avg_hamming: float = 0.0          # среднее расстояние Хэмминга
+    avg_similarity_percent: float = 0.0  # то же в процентах сходства
+    n_visual: int = 0                 # по скольким картинкам посчитано
 
     def to_dict(self) -> dict:
         return {
@@ -161,6 +165,9 @@ class ImageCheckResult:
             "n_match": self.n_match,
             "tau": self.tau,
             "ocr_enabled": self.ocr_enabled,
+            "avg_hamming": self.avg_hamming,
+            "avg_similarity_percent": self.avg_similarity_percent,
+            "n_visual": self.n_visual,
             "images": [
                 {
                     "seq": img.seq,
@@ -207,6 +214,37 @@ def phash_from_hex(hex_str: str) -> int:
 
 def hamming_distance(a: int, b: int) -> int:
     return (a ^ b).bit_count()
+
+
+PHASH_BITS = 64
+
+
+def similarity_percent(distance: float) -> float:
+    """Расстояние Хэмминга -> процент визуального сходства.
+
+    d = 0 -> 100%, d = 64 -> 0%.
+    """
+    return (1.0 - distance / PHASH_BITS) * 100.0
+
+
+def hamming_stats(records: list["DocumentImageRecord"]) -> tuple[float, float, int]:
+    """Среднее расстояние Хэмминга по выборке и его процентный эквивалент.
+
+    Учитываются только визуальные совпадения (каналы phash и both): для
+    совпадений исключительно по OCR расстояние не вычисляется и в поле
+    hamming_distance хранится заглушка 64, которая исказила бы среднее.
+    Для каждого изображения берётся лучшее визуальное совпадение.
+    """
+    distances: list[int] = []
+    for img in records:
+        for m in img.matches:
+            if m.match_via in ("phash", "both"):
+                distances.append(m.hamming_distance)
+                break
+    if not distances:
+        return 0.0, 0.0, 0
+    avg = sum(distances) / len(distances)
+    return round(avg, 2), round(similarity_percent(avg), 1), len(distances)
 
 
 # --- извлечение -------------------------------------------------------------
@@ -784,6 +822,7 @@ def process_document(
 
     n_total = len(records)
     p_img = 0.0 if n_total == 0 else (n_match / n_total) * 100.0
+    avg_d, avg_sim, n_visual = hamming_stats(records)
     return ImageCheckResult(
         task_id=task_id,
         document_id=document_id,
@@ -794,6 +833,9 @@ def process_document(
         n_match=n_match,
         tau=tau,
         ocr_enabled=ocr_on,
+        avg_hamming=avg_d,
+        avg_similarity_percent=avg_sim,
+        n_visual=n_visual,
     )
 
 
